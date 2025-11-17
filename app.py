@@ -155,7 +155,7 @@ class DocumentAnalyzer:
                     self.warnings.append({
                         'type': 'NEWLINES',
                         'count': newline_count,
-                        'message': f'{newline_count)}개 셀에 줄바꿈 포함'
+                        'message': f'{newline_count}개 셀에 줄바꿈 포함'
                     })
                 
                 # 숨겨진 행/열
