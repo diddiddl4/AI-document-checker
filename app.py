@@ -7,6 +7,10 @@ from pptx import Presentation
 import PyPDF2
 from datetime import datetime
 import io
+import base64
+from anthropic import Anthropic
+from pdf2image import convert_from_bytes
+from PIL import Image
 
 # 페이지 설정
 st.set_page_config(
@@ -41,6 +45,13 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+# Claude API 초기화
+def get_claude_client():
+    api_key = st.secrets.get('ANTHROPIC_API_KEY') or os.environ.get('ANTHROPIC_API_KEY')
+    if not api_key:
+        return None
+    return Anthropic(api_key=api_key)
+
 class DocumentAnalyzer:
     def __init__(self, filepath, mode='standard'):
         self.filepath = filepath
@@ -50,6 +61,7 @@ class DocumentAnalyzer:
         self.warnings = []
         self.score = 100
         self.cell_issues = []
+        self.ocr_text = None
         
     def analyze(self):
         if self.file_ext in ['.xlsx', '.xls']:
@@ -60,7 +72,51 @@ class DocumentAnalyzer:
             return self._analyze_ppt()
         elif self.file_ext == '.pdf':
             return self._analyze_pdf()
+        elif self.file_ext in ['.jpg', '.jpeg', '.png', '.gif', '.bmp']:
+            return self._analyze_image()
         return self._get_result()
+    
+    def ocr_with_claude(self, image_data, is_bytes=True):
+        """Claude API로 이미지 OCR"""
+        try:
+            client = get_claude_client()
+            if not client:
+                return "API 키가 설정되지 않았습니다."
+            
+            # 이미지를 base64로 변환
+            if is_bytes:
+                image_b64 = base64.b64encode(image_data).decode('utf-8')
+            else:
+                with open(image_data, 'rb') as f:
+                    image_b64 = base64.b64encode(f.read()).decode('utf-8')
+            
+            # Claude API 호출
+            message = client.messages.create(
+                model="claude-3-5-sonnet-20241022",
+                max_tokens=4096,
+                messages=[{
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "image",
+                            "source": {
+                                "type": "base64",
+                                "media_type": "image/png",
+                                "data": image_b64
+                            }
+                        },
+                        {
+                            "type": "text",
+                            "text": "이 이미지의 모든 텍스트를 정확하게 추출해주세요. 표, 목록, 레이아웃을 최대한 유지하면서 마크다운 형식으로 작성해주세요."
+                        }
+                    ]
+                }]
+            )
+            
+            return message.content[0].text
+            
+        except Exception as e:
+            return f"OCR 오류: {str(e)}"
     
     def _analyze_excel(self):
         try:
@@ -99,7 +155,7 @@ class DocumentAnalyzer:
                     self.warnings.append({
                         'type': 'NEWLINES',
                         'count': newline_count,
-                        'message': f'{newline_count}개 셀에 줄바꿈 포함'
+                        'message': f'{newline_count)}개 셀에 줄바꿈 포함'
                     })
                 
                 # 숨겨진 행/열
@@ -147,26 +203,97 @@ class DocumentAnalyzer:
         return self._get_result()
     
     def _analyze_pdf(self):
+        """PDF 분석 + OCR"""
         try:
             pdf = PyPDF2.PdfReader(self.filepath)
             text_extractable = False
+            extracted_text = ""
+            
+            # 일반 텍스트 추출 시도
             for page in pdf.pages[:3]:
-                if page.extract_text().strip():
+                text = page.extract_text().strip()
+                if text:
                     text_extractable = True
-                    break
+                    extracted_text += text + "\n\n"
             
             if not text_extractable:
-                self.score -= 30
+                # 스캔 PDF → OCR 실행
+                self.score -= 20
                 self.issues.append({
                     'type': 'SCANNED_PDF',
-                    'message': '스캔된 PDF - OCR 처리 필요'
+                    'message': '스캔된 PDF - OCR 처리 중...'
                 })
+                
+                client = get_claude_client()
+                if client:
+                    with st.spinner('📸 Claude AI로 텍스트 추출 중...'):
+                        # PDF를 이미지로 변환
+                        with open(self.filepath, 'rb') as f:
+                            images = convert_from_bytes(f.read(), first_page=1, last_page=3)
+                        
+                        full_text = ""
+                        for i, image in enumerate(images):
+                            # PIL Image를 bytes로 변환
+                            img_byte_arr = io.BytesIO()
+                            image.save(img_byte_arr, format='PNG')
+                            img_byte_arr = img_byte_arr.getvalue()
+                            
+                            # OCR 실행
+                            page_text = self.ocr_with_claude(img_byte_arr, is_bytes=True)
+                            full_text += f"\n\n=== 페이지 {i+1} ===\n\n{page_text}"
+                        
+                        self.ocr_text = full_text
+                        self.warnings.append({
+                            'type': 'OCR_SUCCESS',
+                            'message': f'Claude OCR로 {len(images)}페이지 텍스트 추출 완료'
+                        })
+                else:
+                    self.warnings.append({
+                        'type': 'NO_API_KEY',
+                        'message': 'OCR을 위해 API 키가 필요합니다'
+                    })
+            else:
+                self.ocr_text = extracted_text
+            
+        except Exception as e:
+            self.issues.append({'type': 'ERROR', 'message': str(e)})
+        return self._get_result()
+    
+    def _analyze_image(self):
+        """이미지 분석 + OCR"""
+        try:
+            client = get_claude_client()
+            if not client:
+                self.score = 50
+                self.warnings.append({
+                    'type': 'NO_API_KEY',
+                    'message': 'OCR을 위해 API 키가 필요합니다'
+                })
+                return self._get_result()
+            
+            with st.spinner('📸 Claude AI로 텍스트 추출 중...'):
+                # OCR 실행
+                extracted_text = self.ocr_with_claude(self.filepath, is_bytes=False)
+                
+                if extracted_text and not extracted_text.startswith("OCR 오류"):
+                    self.score = 75
+                    self.warnings.append({
+                        'type': 'IMAGE_OCR',
+                        'message': 'Claude OCR로 텍스트 추출 완료'
+                    })
+                    self.ocr_text = extracted_text
+                else:
+                    self.score = 30
+                    self.issues.append({
+                        'type': 'OCR_FAILED',
+                        'message': '텍스트 추출 실패'
+                    })
         except Exception as e:
             self.issues.append({'type': 'ERROR', 'message': str(e)})
         return self._get_result()
     
     def _get_result(self):
-        self.score = max(0, self.score)
+        self.score = max(0, min(100, self.score))
         
         if self.score >= 80:
             grade = 'A'
@@ -263,6 +390,11 @@ class DocumentAnalyzer:
 st.title("🔍 AI 문서 점검기 Pro")
 st.markdown("### 경원알미늄 - 탁월한 업무 시스템 구축 TFT")
 
+# API 키 확인
+api_key_available = bool(get_claude_client())
+if not api_key_available:
+    st.info("💡 Claude OCR 기능을 사용하려면 API 키를 설정해주세요 (설정 방법은 아래 참고)")
+
 # 모드 선택
 col1, col2 = st.columns(2)
 with col1:
@@ -277,8 +409,8 @@ selected_mode = 'standard' if mode == "표준 모드" else 'analysis'
 # 파일 업로드
 uploaded_file = st.file_uploader(
     "파일을 선택하세요",
-    type=['xlsx', 'xls', 'docx', 'doc', 'pptx', 'ppt', 'pdf'],
-    help="Excel, Word, PowerPoint, PDF 지원"
+    type=['xlsx', 'xls', 'docx', 'doc', 'pptx', 'ppt', 'pdf', 'jpg', 'jpeg', 'png'],
+    help="Excel, Word, PowerPoint, PDF, 이미지 지원"
 )
 
 if uploaded_file:
@@ -333,12 +465,51 @@ if uploaded_file:
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                 )
     
+    with col2:
+        if analyzer.ocr_text:
+            st.download_button(
+                label="📝 OCR 텍스트 추출",
+                data=analyzer.ocr_text,
+                file_name=f"OCR_{uploaded_file.name}.txt",
+                mime="text/plain"
+            )
+    
+    # OCR 결과 미리보기
+    if analyzer.ocr_text:
+        with st.expander("👁️ 추출된 텍스트 미리보기"):
+            st.text_area("", analyzer.ocr_text, height=300)
+    
     # 임시 파일 삭제
-    os.remove(f"temp_{uploaded_file.name}")
+    try:
+        os.remove(f"temp_{uploaded_file.name}")
+    except:
+        pass
+
+# API 키 설정 가이드
+with st.expander("🔑 Claude API 키 설정 방법"):
+    st.markdown("""
+    ### Streamlit Cloud에서 설정:
+    1. https://share.streamlit.io/ → 앱 선택
+    2. Settings → Secrets
+    3. 다음 내용 추가:
+    ```
+    ANTHROPIC_API_KEY = "sk-ant-..."
+    ```
+    4. Save → 앱 자동 재시작
+    
+    ### API 키 발급:
+    1. https://console.anthropic.com
+    2. API Keys → Create Key
+    3. 키 복사
+    
+    ### 비용:
+    - 이미지 1장당 ~$0.003 (약 4원)
+    - $5 충전 추천
+    """)
 
 # 푸터
 st.markdown("""
 <div class="footer">
-경원알미늄 - 탁월한 업무 시스템 구축 TFT
+경원알미늄 - 탁월한 업무 시스템 구축 TFT | Claude OCR 지원
 </div>
 """, unsafe_allow_html=True)
