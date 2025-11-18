@@ -2,6 +2,7 @@ import streamlit as st
 import os
 import openpyxl
 from openpyxl.utils import get_column_letter
+from copy import copy
 from docx import Document
 from pptx import Presentation
 import PyPDF2
@@ -116,6 +117,7 @@ class DocumentAnalyzer:
             return message.content[0].text
             
         except Exception as e:
+            st.error(f"🐛 OCR 오류: {str(e)}")
             return f"OCR 오류: {str(e)}"
     
     def _analyze_excel(self):
@@ -257,6 +259,7 @@ class DocumentAnalyzer:
             
         except Exception as e:
             self.issues.append({'type': 'ERROR', 'message': str(e)})
+            st.error(f"PDF 분석 오류: {str(e)}")
         return self._get_result()
     
     def _analyze_image(self):
@@ -290,6 +293,7 @@ class DocumentAnalyzer:
                     })
         except Exception as e:
             self.issues.append({'type': 'ERROR', 'message': str(e)})
+            st.error(f"이미지 분석 오류: {str(e)}")
         return self._get_result()
     
     def _get_result(self):
@@ -332,10 +336,12 @@ class DocumentAnalyzer:
                     
                     source_cell = sheet.cell(min_row, min_col)
                     merged_value = source_cell.value
-                    source_font = source_cell.font.copy() if source_cell.font else None
-                    source_fill = source_cell.fill.copy() if source_cell.fill else None
-                    source_border = source_cell.border.copy() if source_cell.border else None
-                    source_alignment = source_cell.alignment.copy() if source_cell.alignment else None
+                    
+                    # copy() 함수 사용
+                    source_font = copy(source_cell.font) if source_cell.font else None
+                    source_fill = copy(source_cell.fill) if source_cell.fill else None
+                    source_border = copy(source_cell.border) if source_cell.border else None
+                    source_alignment = copy(source_cell.alignment) if source_cell.alignment else None
                     
                     sheet.unmerge_cells(str(merged))
                     
@@ -344,13 +350,13 @@ class DocumentAnalyzer:
                             cell = sheet.cell(row, col)
                             cell.value = merged_value
                             if source_font:
-                                cell.font = source_font.copy()
+                                cell.font = copy(source_font)
                             if source_fill:
-                                cell.fill = source_fill.copy()
+                                cell.fill = copy(source_fill)
                             if source_border:
-                                cell.border = source_border.copy()
+                                cell.border = copy(source_border)
                             if source_alignment:
-                                cell.alignment = source_alignment.copy()
+                                cell.alignment = copy(source_alignment)
                 
                 # 줄바꿈 제거
                 for row in sheet.iter_rows():
@@ -394,12 +400,7 @@ st.markdown("### 경원알미늄 - 탁월한 업무 시스템 구축 TFT")
 if st.secrets.get('ANTHROPIC_API_KEY'):
     st.success("✅ API 키 로드 성공")
 else:
-    st.error("❌ API 키 로드 실패")
-
-# API 키 확인
-api_key_available = bool(get_claude_client())
-if not api_key_available:
-    st.info("💡 Claude OCR 기능을 사용하려면 API 키를 설정해주세요 (설정 방법은 아래 참고)")
+    st.info("💡 Claude OCR 기능을 사용하려면 API 키를 설정해주세요")
 
 # 모드 선택
 col1, col2 = st.columns(2)
@@ -491,10 +492,9 @@ if uploaded_file:
     except:
         pass
 
-
 # 푸터
 st.markdown("""
 <div class="footer">
-경원알미늄 - 탁월한 업무 시스템 구축 TFT | Claude OCR 지원
+경원알미늄 - 탁월한 업무 시스템 구축 TFT
 </div>
 """, unsafe_allow_html=True)
