@@ -390,6 +390,12 @@ class DocumentAnalyzer:
 st.title("🔍 AI 문서 점검기 Pro")
 st.markdown("### 경원알미늄 - 탁월한 업무 시스템 구축 TFT")
 
+# 디버깅: API 키 확인
+if st.secrets.get('ANTHROPIC_API_KEY'):
+    st.success("✅ API 키 로드 성공")
+else:
+    st.error("❌ API 키 로드 실패")
+
 # API 키 확인
 api_key_available = bool(get_claude_client())
 if not api_key_available:
