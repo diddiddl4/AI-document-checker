@@ -93,7 +93,7 @@ class DocumentAnalyzer:
             
             # Claude API 호출
             message = client.messages.create(
-                model="claude-3-5-sonnet-20241022",
+                model="claude-sonnet-4-20250514",  # 최신 모델명
                 max_tokens=4096,
                 messages=[{
                     "role": "user",
@@ -108,7 +108,16 @@ class DocumentAnalyzer:
                         },
                         {
                             "type": "text",
-                            "text": "이 이미지의 모든 텍스트를 정확하게 추출해주세요. 표, 목록, 레이아웃을 최대한 유지하면서 마크다운 형식으로 작성해주세요."
+                            "text": """이 이미지의 모든 텍스트를 정확하게 추출해주세요. 
+
+요구사항:
+1. 원본의 단락 구분을 정확히 유지
+2. 적절한 띄어쓰기 적용
+3. 표가 있다면 마크다운 표 형식으로
+4. 제목과 본문 구분 명확히
+5. 불필요한 공백 제거
+
+깔끔하고 읽기 쉬운 형식으로 작성해주세요."""
                         }
                     ]
                 }]
@@ -118,6 +127,8 @@ class DocumentAnalyzer:
             
         except Exception as e:
             st.error(f"🐛 OCR 오류: {str(e)}")
+            import traceback
+            st.code(traceback.format_exc())
             return f"OCR 오류: {str(e)}"
     
     def _analyze_excel(self):
@@ -396,12 +407,6 @@ class DocumentAnalyzer:
 st.title("🔍 AI 문서 점검기 Pro")
 st.markdown("### 경원알미늄 - 탁월한 업무 시스템 구축 TFT")
 
-# 디버깅: API 키 확인
-if st.secrets.get('ANTHROPIC_API_KEY'):
-    st.success("✅ API 키 로드 성공")
-else:
-    st.info("💡 Claude OCR 기능을 사용하려면 API 키를 설정해주세요")
-
 # 모드 선택
 col1, col2 = st.columns(2)
 with col1:
@@ -411,13 +416,18 @@ with col1:
         help="표준: 병합셀 해제 + 줄바꿈 제거 | 분석: 표준 + 기호변환"
     )
 
+with col2:
+    if st.button("🔄 새로운 파일 분석", use_container_width=True):
+        st.rerun()
+
 selected_mode = 'standard' if mode == "표준 모드" else 'analysis'
 
 # 파일 업로드
 uploaded_file = st.file_uploader(
     "파일을 선택하세요",
     type=['xlsx', 'xls', 'docx', 'doc', 'pptx', 'ppt', 'pdf', 'jpg', 'jpeg', 'png'],
-    help="Excel, Word, PowerPoint, PDF, 이미지 지원"
+    help="Excel, Word, PowerPoint, PDF, 이미지 지원",
+    key='file_uploader'
 )
 
 if uploaded_file:
