@@ -445,23 +445,7 @@ if uploaded_file:
     with col3:
         st.metric("모드", "표준" if selected_mode == 'standard' else "분석")
     
-    # 이슈 표시
-    if result['issues']:
-        st.subheader("🚨 주요 이슈")
-        for issue in result['issues']:
-            st.error(f"**{issue.get('type')}**: {issue.get('message')}")
-    
-    if result['warnings']:
-        st.subheader("⚠️ 경고")
-        for warning in result['warnings']:
-            st.warning(f"**{warning.get('type')}**: {warning.get('message')}")
-    
-    if result['cell_issues']:
-        st.subheader("📍 셀별 문제점")
-        for cell_issue in result['cell_issues'][:10]:
-            st.info(f"{cell_issue['sheet']} - {cell_issue['cell']}: {cell_issue['message']}")
-    
-    # 다운로드 버튼
+    # 다운로드 버튼 (위로 이동)
     st.subheader("📥 다운로드")
     
     col1, col2 = st.columns(2)
@@ -485,6 +469,22 @@ if uploaded_file:
                 file_name=f"OCR_{uploaded_file.name}.txt",
                 mime="text/plain"
             )
+    
+    # 이슈 표시
+    if result['issues']:
+        st.subheader("🚨 주요 이슈")
+        for issue in result['issues']:
+            st.error(f"**{issue.get('type')}**: {issue.get('message')}")
+    
+    if result['warnings']:
+        st.subheader("⚠️ 경고")
+        for warning in result['warnings']:
+            st.warning(f"**{warning.get('type')}**: {warning.get('message')}")
+    
+    if result['cell_issues']:
+        st.subheader("📍 셀별 문제점")
+        for cell_issue in result['cell_issues'][:10]:
+            st.info(f"{cell_issue['sheet']} - {cell_issue['cell']}: {cell_issue['message']}")
     
     # OCR 결과 미리보기
     if analyzer.ocr_text:
