@@ -485,27 +485,6 @@ if uploaded_file:
     except:
         pass
 
-# API 키 설정 가이드
-with st.expander("🔑 Claude API 키 설정 방법"):
-    st.markdown("""
-    ### Streamlit Cloud에서 설정:
-    1. https://share.streamlit.io/ → 앱 선택
-    2. Settings → Secrets
-    3. 다음 내용 추가:
-    ```
-    ANTHROPIC_API_KEY = "sk-ant-..."
-    ```
-    4. Save → 앱 자동 재시작
-    
-    ### API 키 발급:
-    1. https://console.anthropic.com
-    2. API Keys → Create Key
-    3. 키 복사
-    
-    ### 비용:
-    - 이미지 1장당 ~$0.003 (약 4원)
-    - $5 충전 추천
-    """)
 
 # 푸터
 st.markdown("""
