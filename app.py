@@ -416,18 +416,13 @@ with col1:
         help="표준: 병합셀 해제 + 줄바꿈 제거 | 분석: 표준 + 기호변환"
     )
 
-with col2:
-    if st.button("🔄 새로운 파일 분석", use_container_width=True):
-        st.rerun()
-
 selected_mode = 'standard' if mode == "표준 모드" else 'analysis'
 
 # 파일 업로드
 uploaded_file = st.file_uploader(
     "파일을 선택하세요",
     type=['xlsx', 'xls', 'docx', 'doc', 'pptx', 'ppt', 'pdf', 'jpg', 'jpeg', 'png'],
-    help="Excel, Word, PowerPoint, PDF, 이미지 지원",
-    key='file_uploader'
+    help="Excel, Word, PowerPoint, PDF, 이미지 지원"
 )
 
 if uploaded_file:
